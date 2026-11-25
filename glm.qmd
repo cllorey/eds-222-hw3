@@ -1,7 +1,7 @@
 ---
 title: EDS 222 HW3
 subtitle: Generalized linear models
-author: Your Name Here
+author: Courtney Lorey
 execute:
   eval: false
 ---
@@ -105,15 +105,15 @@ With a binary response, the raw data are hard to read. Group properties into 10-
 
 properties <- properties |>
   mutate(
-    age_bin = cut(home_age, breaks = seq(_____, _____, by = _____), include.lowest = TRUE)
+    age_bin = cut(home_age, breaks = seq(20, 130, by = 10), include.lowest = TRUE)
   )
 
 age_summary <- properties |>
   summarize(
     home_age = mean(home_age),
-    prop_hazard = _____,
+    prop_hazard = mean(hazard),
     n = n(),
-    .by = _____
+    .by = age_bin
   ) |>
   arrange(age_bin)
 age_summary
@@ -124,15 +124,15 @@ Plot the raw data (jittered) with the binned proportions on top. Size the binned
 ```{r}
 #| label: plot-age-hazard
 
-ggplot(properties, aes(x = _____, y = _____)) +
+ggplot(properties, aes(x = home_age, y = hazard)) +
   geom_point(
     position = position_jitter(height = 0.1, width = 0),
     shape = 21,
     alpha = 0.5
   ) +
   geom_point(
-    aes(y = _____, size = _____),
-    data = _____,
+    aes(y = prop_hazard, size = n),
+    data = age_summary,
     color = "cornflowerblue"
   ) +
   labs(
@@ -144,7 +144,7 @@ ggplot(properties, aes(x = _____, y = _____)) +
 
 Describe the relationship between home age and the probability that a property is above the screening level. Which bins have too few properties to say much?
 
-_Your answer here._
+As home age increases,
 
 ### 1b. Fit the model
 
@@ -163,8 +163,8 @@ Fit a logistic regression with `hazard` as the response and `home_age` as the pr
 #| label: fit-age-glm
 
 age_glm <- glm(
-  _____,
-  family = _____,
+  hazard ~ home_age,
+  family = binomial(link = 'logit'),
   data = properties
 )
 summary(age_glm)
@@ -172,15 +172,15 @@ summary(age_glm)
 
 Fill in the blanks to interpret the slope in a complete sentence, including units.
 
-> For every additional year of home age, the ___ of soil lead above the screening level _[increase/decrease]_ by ___.
+> For every additional year of home age, the **log odds** of soil lead above the screening level **increase** by 0.031.
 
 Fill in the blanks below to interpret the slope's p-value.
 
-$H_0$: the slope ____
+$H_0$: the slope = 0, home age has no effect on the log odds that a property is above the screening level
 
-$H_A$: the slope ____
+$H_A$: the slope != 0, home age has an effect on the log odds that a property is above the screening level
 
-With a p-value of ____, we ____ the null hypothesis and conclude there is evidence for ____.
+With a p-value of 4.32e-05, we reject the null hypothesis and conclude there is evidence for $H_A$, that home age has an effect on the log odds that a property is above the screening level.
 
 ### 1c. Convert log odds to probabilities
 
@@ -190,12 +190,12 @@ Log odds aren't very intuitive. Create a prediction grid covering the range of h
 #| label: predict-age
 
 age_grid <- tibble(
-  home_age = seq(min(_____), max(_____), by = 1)
+  home_age = seq(min(20), max(130), by = 1)
 )
 age_grid$p_hazard <- predict(
-  _____,
-  newdata = _____,
-  type = _____
+  age_glm,
+  newdata = age_grid,
+  type = "response"
 )
 ```
 
@@ -205,6 +205,28 @@ Overlay the predicted probabilities on your figure from 1a.
 #| label: plot-age-predictions
 
 # Copy your figure from 1a here, then add a geom_line() layer for the predictions
+
+ggplot(properties, aes(x = home_age, y = hazard)) +
+  geom_point(
+    position = position_jitter(height = 0.1, width = 0),
+    shape = 21,
+    alpha = 0.5
+  ) +
+  geom_point(
+    aes(y = prop_hazard, size = n),
+    data = age_summary,
+    color = "cornflowerblue"
+  ) +
+  geom_line(
+    aes(x = home_age, y = p_hazard),
+    data = age_grid,
+    color = 'firebrick'
+  ) +
+  labs(
+    x = "Home age (years)",
+    y = "Above screening level",
+    size = "Properties"
+  )
 ```
 
 What does the model predict for the resident's 100-year-old home?
@@ -214,12 +236,12 @@ What does the model predict for the resident's 100-year-old home?
 
 predict(
   age_glm,
-  newdata = tibble(home_age = _____),
+  newdata = tibble(home_age = 100),
   type = "response"
 )
 ```
 
-_Your answer here._
+The probability that a 100 year old property is above the screening level is predicted by the model to be about 58%. 
 
 ### 1d. A constant slope, a changing effect
 
@@ -236,14 +258,17 @@ p_age <- predict(
 p_age
 
 # Change from 30 to 40 years
-_____
+0.1741555 - 0.1337357 
+# Answer: 0.04
+
 # Change from 100 to 110 years
-_____
+0.6517213 - 0.5780435 
+# Answer: 0.07
 ```
 
 Both changes are 10 years. Why aren't the changes in probability the same? Use your figure from 1c to explain.
 
-_Your answer here._
+The changes in probability aren't the same because unlike the log odds scale (which is linear and goes between -inf and inf), the probability scale is not linear, it is compressed into an S-curve between 0 and 1.
 
 ## 2. Logistic regression with multiple predictors
 
@@ -275,8 +300,8 @@ $$
 #| label: fit-hazard-glm
 
 hazard_glm <- glm(
-  _____,
-  family = _____,
+  hazard ~ home_age + dist_exide_km + area,
+  family = binomial(link = 'logit'),
   data = properties
 )
 summary(hazard_glm)
@@ -284,11 +309,13 @@ summary(hazard_glm)
 
 Interpret the coefficients for `home_age` and `dist_exide_km` in complete sentences, including units. Remember that each coefficient describes the effect of that predictor _holding the other predictors constant_. Use the p-values to determine if the estimates are significantly different than 0.
 
-_Your answer here._
+The `home_age` coefficient is 0.03, meaning that with all other variables held constant, for each additional year in home age, the log odds that the property is above the screening level increases by 0.03. The p-value for this coefficient is statistically significant at 0.0002 (less than an alpha significance level of 0.05), meaning that that we have sufficient evidence to reject the null hypothesis (beta_1 = 0) and have evidence to support the HA (beta_1 != 0, that home age has an impact on the log odds of a property being above the screening level)
+
+The `dist_exide_km` coefficient is -0.64, meaning that with all other variables held constant, for each additional km in distance from exide, the log odds that the property is above the screening level decreases by -0.64. However, the p-value for this coefficient is 0.15, which is greater than an alpha significance level of 0.05, meaning that this coefficient estimate is not statistically significant and we don't have sufficient evidence to reject the null hypothesis (beta_2 = 0, that distance from exide does not have an impact on the log odds of a property being above the screening level).
 
 Compare the `home_age` coefficient to the one from `age_glm` in problem 1. Did accounting for distance and area change your conclusion about home age?
 
-_Your answer here._
+The coefficients for both models are very similar (both round to 0.03), so accounting for distance and area did not change our conclusion about home age. 
 
 ### 2b. Visualize the predictions
 
@@ -304,13 +331,13 @@ With more than one predictor, a prediction grid needs a value for _every_ predic
 #| label: predict-hazard
 
 hazard_grid <- expand_grid(
-  home_age = _____,
-  area = _____,
-  dist_exide_km = _____
+  home_age = seq(min(20), max(130), by = 1),
+  area = c("ENA", "ESA", "SS"),
+  dist_exide_km = median(properties$dist_exide_km)
 )
 hazard_grid$p_hazard <- predict(
-  _____,
-  newdata = _____,
+  hazard_glm,
+  newdata = hazard_grid,
   type = "response"
 )
 ```
@@ -320,15 +347,15 @@ Plot the predicted probabilities as one line per area, on top of the jittered ra
 ```{r}
 #| label: plot-hazard-predictions
 
-ggplot(properties, aes(x = _____, y = _____, color = _____)) +
+ggplot(properties, aes(x = home_age, y = hazard, color = area)) +
   geom_point(
     position = position_jitter(height = 0.1, width = 0),
     shape = 21,
     alpha = 0.5
   ) +
   geom_line(
-    aes(y = _____),
-    data = _____,
+    aes(y = p_hazard),
+    data = hazard_grid,
     linewidth = 1.5
   ) +
   labs(
@@ -346,22 +373,32 @@ What does the model predict for a 100-year-old home at the median distance from 
 predict(
   hazard_glm,
   newdata = tibble(
-    home_age = _____,
-    area = _____,
-    dist_exide_km = _____
+    home_age = 100,
+    area = c("ENA", "ESA", "SS"),
+    dist_exide_km = median(properties$dist_exide_km)
   ),
   type = "response"
 )
 ```
+
+The model predicts:
+ENA: 0.6937402 
+ESA: 0.5446699
+SS: 0.5601194 
 
 ### 2c. Interpret
 
 Answer the following questions in 2-3 sentences each.
 
 1. Based on your model, what would you tell the resident with the 100-year-old home? Use your predictions from 2b.
+
+Based on this model, I would tell the resident with the 100-year-old home that, once distance from the Exide plant is held constant at its median level, homes in the ENA area are estimated to have a 69% probability of having soil lead above the screening level. This is a higher probability than that of the homes in ESA and SS areas, with 54% and 56%, respectively.   
+
 2. The `dist_exide_km` coefficient was not significantly different from 0. Does that mean Exide didn't contaminate these neighborhoods? Think about the range of distances in the data and what the hypothesis test can and can't tell you.
 
-_Your answers here._
+No, this does not conclusively mean that Exide didn't contaminate these neighborhoods. This result just implies that there is not enough evidence to suggest that `dist_exide_km` has a statistically significant effect on the probability of a home having soil lead above the screening level. A larger sample size across a wider range of distances (specifically including distances closer the plant) might yield different results - the current data only has homes between 1.2km and 3km from the plant.
+
+
 
 ## 3. Simulate data for a Poisson regression
 
