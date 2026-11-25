@@ -396,9 +396,7 @@ Based on this model, I would tell the resident with the 100-year-old home that, 
 
 2. The `dist_exide_km` coefficient was not significantly different from 0. Does that mean Exide didn't contaminate these neighborhoods? Think about the range of distances in the data and what the hypothesis test can and can't tell you.
 
-No, this does not conclusively mean that Exide didn't contaminate these neighborhoods. This result just implies that there is not enough evidence to suggest that `dist_exide_km` has a statistically significant effect on the probability of a home having soil lead above the screening level. A larger sample size across a wider range of distances (specifically including distances closer the plant) might yield different results - the current data only has homes between 1.2km and 3km from the plant.
-
-
+No, this does not conclusively mean that Exide didn't contaminate these neighborhoods. This result just implies that there is not enough evidence to suggest that `dist_exide_km` has a statistically significant effect on the probability of a home having soil lead above the screening level in this dataset. A larger sample size across a wider range of distances (specifically including distances closer the plant) might yield different results - the current data only has homes between 1.2km and 3km from the plant.
 
 ## 3. Simulate data for a Poisson regression
 
@@ -436,16 +434,16 @@ Keep your values realistic. A year has 365 days, and even a monitor next to a ma
 
 | Parameter | Meaning in this scenario | Sign (+ or -) | Your value |
 |---|---|---|---|
-| $\beta_0$ | Log of the expected number of exceedance days for a monitor at the facility (distance = 0) | | |
-| $\beta_1$ | | | |
+| $\beta_0$ | natural log of the expected number of exceedance days for a monitor at the facility (distance = 0) | + | ln(42 days) = 3.7 |
+| $\beta_1$ | natural log of the factor that multiplies the expected number of exceedance days for each additional kilometer from the facility | - | ln(0.7) = -0.36 | 
 
-_Justification for your values here._
+Assuming that the facility was operating year round, it seemed reasonable to expect that 42 days (about 6 cumulative weeks) of the year would have elevated lead levels observed in the air. I selected -0.36 for my beta_1 (corresponds to e^-0.36 = 0.7) because it seems reasonable to expect a moderate decrease (in this case, 30%) in exceedance days as distance from facility increases. 
 
 ```{r}
 #| label: sim-params
 
-beta_0 <- _____
-beta_1 <- _____
+beta_0 <- 3.7
+beta_1 <- -0.36
 ```
 
 ### 3b. Simulate the predictor
@@ -456,7 +454,7 @@ Simulate `N = 100` monitors. Distance from the facility should be continuous, so
 #| label: sim-predictor
 
 N <- 100
-dist_km <- runif(N, min = _____, max = _____)
+dist_km <- runif(N, min = 0, max = 5)
 ```
 
 ### 3c. Simulate the response
@@ -466,8 +464,8 @@ First, calculate the expected number of exceedance days ($\lambda$) using your m
 ```{r}
 #| label: sim-response
 
-lambda <- _____
-days <- rpois(n = _____, lambda = _____)
+lambda <- exp(beta_0 + beta_1 * dist_km)
+days <- rpois(n = N, lambda = lambda)
 
 simulated_monitors <- tibble(
   dist_km,
@@ -483,8 +481,8 @@ Fit a Poisson regression to your simulated data. Then compare the estimated coef
 #| label: sim-fit
 
 sim_glm <- glm(
-  _____ ~ _____,
-  family = _____,
+  days ~ dist_km,
+  family = poisson(link = "log"),
   data = simulated_monitors
 )
 summary(sim_glm)
@@ -492,15 +490,15 @@ summary(sim_glm)
 tibble(
   parameter = c("beta_0", "beta_1"),
   true = c(beta_0, beta_1),
-  estimated = coef(_____),
-  true_multiplier = _____,
-  estimated_multiplier = _____
+  estimated = coef(sim_glm),
+  true_multiplier = exp(c(beta_0, beta_1)),
+  estimated_multiplier = exp(coef(sim_glm))
 )
 ```
 
 Interpret the estimated effect of distance in a complete sentence, using the multiplier ($e^{\hat\beta_1}$) rather than the log-scale coefficient. Did the model recover your parameters? Use the standard errors to decide whether the differences between the true and estimated values are larger than you'd expect from chance.
 
-_Your answer here._
+The estimated beta_1 multiplier value (0.705), means that each additional kilometer multiplies the expected number of exceedance days by 0.705, which would mean a 30% decrease in expected exceedance days per kilometer. This model recovered my parameters almost exactly, there is very little difference between the true and estimated values.
 
 ### 3e. Visualize the simulation
 
@@ -518,32 +516,33 @@ In HW2, you drew straight lines with `geom_abline()`. On the count scale, a Pois
 sim_grid <- tibble(
   dist_km = seq(0, 5, by = 0.05)
 )
-sim_grid$true_lambda <- _____
+sim_grid$true_lambda <- exp(beta_0 + beta_1 * sim_grid$dist_km)
 sim_grid$estimated_lambda <- predict(
-  _____,
-  newdata = _____,
-  type = _____
+  sim_glm,
+  newdata = sim_grid,
+  type = "response"
 )
 ```
 
 ```{r}
 #| label: sim-plot
 
-ggplot(simulated_monitors, aes(x = _____, y = _____)) +
+ggplot(simulated_monitors, aes(x = dist_km, y = days)) +
   geom_point(alpha = 0.5) +
   geom_line(
-    aes(y = _____),
+    aes(y = true_lambda),
     data = sim_grid,
     linetype = "dashed",
     linewidth = 1,
     color = "cornflowerblue"
   ) +
   geom_line(
-    aes(y = _____),
+    aes(y = estimated_lambda),
     data = sim_grid,
     linetype = "solid",
     linewidth = 1,
-    color = "firebrick"
+    color = "firebrick",
+    alpha = 0.5
   ) +
   labs(
     x = "Distance from facility (km)",
